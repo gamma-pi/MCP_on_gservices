@@ -43,10 +43,20 @@ def get_google_creds():
     return creds
 
 
-# Initialize Google services
-creds = get_google_creds()
-calendar_service = build('calendar', 'v3', credentials=creds)
-gmail_service = build('gmail', 'v1', credentials=creds)
+# Global service instances (initialized lazily)
+_calendar_service = None
+_gmail_service = None
+
+
+def get_services():
+    """Get or initialize Google services"""
+    global _calendar_service, _gmail_service
+    if _calendar_service is None or _gmail_service is None:
+        creds = get_google_creds()
+        _calendar_service = build('calendar', 'v3', credentials=creds)
+        _gmail_service = build('gmail', 'v1', credentials=creds)
+    return _calendar_service, _gmail_service
+
 
 # Create MCP server
 server = Server("google-services-mcp")
@@ -125,6 +135,8 @@ async def handle_list_tools() -> list[Tool]:
 @server.call_tool()
 async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
     try:
+        calendar_service, gmail_service = get_services()
+
         if name == "calendar_list_events":
             max_results = arguments.get("max_results", 10)
             now = datetime.utcnow().isoformat() + 'Z'
