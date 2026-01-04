@@ -1,177 +1,219 @@
-# MCP Google Services Server
+# MCP Google Services - Web Chat Interface
 
-A Python-based Model Context Protocol (MCP) server that connects your local LLM to Google Calendar and Gmail.
+A Python-based system that connects a local LLM (Llama 3.2) to Google Calendar and Gmail through a simple web interface.
 
 ## What is this?
 
-This MCP server lets your local LLM (like Ollama, Claude via Continue.dev, etc.) interact with your Google Calendar and Gmail. Your LLM can:
+This project provides a web-based chat interface where you can ask questions about your Google Calendar and Gmail. The system uses:
+- **Llama 3.2** (3B) running locally via Ollama
+- **HTTP API server** for Google Calendar/Gmail access
+- **Web chat interface** in your browser
 
-- 📅 List, create, and manage calendar events
-- 📧 Read, send, and search emails
+Your LLM can:
+- 📅 List calendar events
+- 📧 List and read emails
 - 🔒 All data stays local - no cloud hosting needed
 
-## Features
+---
 
-### Google Calendar
-- List upcoming events
-- Create new events with attendees
-- View event details
+## Quick Start
 
-### Gmail
-- List recent messages
-- Read full email content
-- Send emails
-- Search emails with Gmail query syntax
+### Prerequisites
 
-## Prerequisites
+- Python 3.8+
+- Ollama installed
+- Google account
+- Brave/Chrome/Firefox browser
 
-- Python 3.8 or higher
-- A Google account
-- PyCharm (recommended) or any Python IDE
+### Setup Steps
 
-## Setup
+1. **Get Google Credentials** (see detailed guide below)
+2. **Install dependencies**
+3. **Authenticate with Google**
+4. **Start the servers**
+5. **Open chat interface**
+
+---
+
+## Detailed Setup
 
 ### 1. Get Google API Credentials
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com)
-2. Create a new project (or select existing)
+2. Create a new project
 3. Enable these APIs:
    - Google Calendar API
    - Gmail API
 4. Configure OAuth consent screen:
    - Choose "External"
    - Add your email as a test user
-5. Create OAuth 2.0 credentials:
-   - Type: Desktop app
-   - Download the `credentials.json` file
-6. Place `credentials.json` in your project root directory
-
-**Detailed guide**: See the "Step-by-Step: Getting Google Credentials" artifact
+5. Create OAuth 2.0 credentials (Desktop app)
+6. Download `credentials.json` and place in project root
 
 ### 2. Set Up Virtual Environment
 
-#### In PyCharm:
-1. Open the project in PyCharm
-2. Go to **File > Settings > Project > Python Interpreter**
-3. Click **Add Interpreter > Add Local Interpreter**
-4. Select **Virtualenv Environment** tab
-5. Choose **New environment**
-6. Change location to end with `/mcp` (e.g., `/home/user/mcp-google-services/mcp`)
-7. Select Python 3.8+ as base interpreter
-8. Click **OK**
-
-#### Or via Terminal:
 ```bash
-# Create virtual environment
-python3 -m venv mcp
-
-# Activate it
-source mcp/bin/activate  # Linux/Mac
-mcp\Scripts\activate     # Windows
-
-# Install dependencies
+cd mcp-google-services
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
 ### 3. Authenticate with Google
 
 ```bash
-# Make setup script executable
-chmod +x setup.sh
-
-# Run setup
-./setup.sh
+source .venv/bin/activate
+python src/server_http.py
 ```
 
-Or manually:
+A browser will open for OAuth. Grant permissions. This creates `token.pickle`.
+
+Press `Ctrl+C` to stop the server after authentication.
+
+### 4. Install Ollama and Pull Model
+
 ```bash
-# Activate your venv first
-source mcp/bin/activate
+# Install Ollama (if not installed)
+curl -fsSL https://ollama.com/install.sh | sh
 
-# Run the server once to trigger OAuth flow
-python src/server.py
+# Pull Llama 3.2 3B model
+ollama pull llama3.2:3b
 ```
 
-A browser window will open. Sign in and grant permissions. This creates `token.pickle` which stores your authenticated session.
+---
 
-### 4. Connect to Your LLM
+## Running the System
 
-Add this to your MCP client configuration:
+You need **3 terminals** running simultaneously:
 
-#### For Ollama + Open WebUI:
-1. Open Open WebUI at http://localhost:3000
-2. Go to **Admin Settings > Connections > MCP Servers**
-3. Add new server:
-   - **Name**: `google-services`
-   - **Command**: `python3`
-   - **Arguments**: `/absolute/path/to/mcp-google-services/src/server.py`
+### Terminal 1: HTTP API Server
 
-#### For Continue.dev (VSCode):
-Edit `~/.continue/config.json`:
-```json
-{
-  "mcpServers": {
-    "google-services": {
-      "command": "python3",
-      "args": ["/absolute/path/to/mcp-google-services/src/server.py"]
-    }
-  }
-}
-```
-
-#### For Cline (VSCode):
-Add in Cline settings under MCP Servers:
-- **Command**: `python3`
-- **Args**: `/absolute/path/to/mcp-google-services/src/server.py`
-
-**Important**: Use the FULL absolute path to `server.py`, not a relative path!
-
-To get your full path:
 ```bash
-cd /path/to/mcp-google-services
-pwd
-# Returns something like: /home/username/mcp-google-services
-# Use: /home/username/mcp-google-services/src/server.py
+cd mcp-google-services
+source .venv/bin/activate
+python src/server_http.py
 ```
 
-## Usage
+Should show:
+```
+🚀 Starting MCP Google Services HTTP Server...
+📍 Server will be available at: http://localhost:8000
+```
 
-Once connected, you can ask your LLM things like:
+### Terminal 2: Ollama with CORS
 
-- "What's on my calendar tomorrow?"
-- "Create a meeting for next Monday at 2pm titled 'Project Review'"
-- "Show me my recent emails"
-- "Send an email to john@example.com about the meeting"
-- "Search my emails for messages from Sarah sent last week"
+```bash
+OLLAMA_ORIGINS="*" ollama serve
+```
 
-The LLM will automatically use the MCP tools to interact with your Google services.
+Should show:
+```
+time=... level=INFO source=routes.go:... msg="Listening on 127.0.0.1:11434"
+```
 
-## Available Tools
+### Terminal 3: Web Server for HTML
 
-Your LLM can use these tools:
+```bash
+cd mcp-google-services
+python3 -m http.server 8080
+```
 
-| Tool | Description |
-|------|-------------|
-| `calendar_list_events` | List upcoming calendar events |
-| `calendar_create_event` | Create a new calendar event |
-| `gmail_list_messages` | List recent Gmail messages |
-| `gmail_read_message` | Read a specific email |
-| `gmail_send_message` | Send an email |
+Should show:
+```
+Serving HTTP on 0.0.0.0 port 8080
+```
+
+---
+
+## Using the Chat Interface
+
+1. Open browser to: `http://localhost:8080/chat_interface.html`
+
+2. Ask questions like:
+   - "What's on my calendar tomorrow?"
+   - "Show me my recent emails"
+   - "What events do I have this week?"
+
+3. The LLM will automatically fetch data from Google and give you natural language answers
+
+---
 
 ## Project Structure
 
 ```
 mcp-google-services/
-├── mcp/                    # Virtual environment (created by you)
+├── .venv/                     # Virtual environment
 ├── src/
-│   └── server.py          # Main MCP server
-├── requirements.txt        # Python dependencies
-├── setup.sh               # Setup helper script
-├── .gitignore             # Git ignore rules
-├── credentials.json       # OAuth credentials (YOU provide)
-├── token.pickle           # Generated after authentication
-└── README.md              # This file
+│   ├── server.py             # MCP stdio server (not currently used)
+│   └── server_http.py        # HTTP API server (⭐ main server)
+├── chat_interface.html        # Web chat UI (⭐ what you use)
+├── requirements.txt           # Python dependencies
+├── credentials.json          # OAuth credentials (YOU provide)
+├── token.pickle              # Auth token (auto-generated)
+├── .gitignore                # Prevents committing secrets
+└── README.md                 # This file
 ```
+
+---
+
+## How It Works
+
+```
+┌─────────────┐
+│   Browser   │  You ask questions here
+│ (port 8080) │
+└──────┬──────┘
+       │
+       ▼
+┌─────────────────────────────────────────┐
+│        chat_interface.html              │
+│  Determines which tool to use           │
+└─────┬──────────────────────┬────────────┘
+      │                      │
+      │ Fetch data          │ Generate response
+      ▼                      ▼
+┌──────────────┐      ┌──────────────┐
+│ HTTP Server  │      │   Ollama     │
+│ (port 8000)  │      │ (port 11434) │
+│              │      │              │
+│ - Calendar   │      │ Llama 3.2 3B │
+│ - Gmail      │      │              │
+└──────┬───────┘      └──────────────┘
+       │
+       ▼
+┌──────────────┐
+│   Google     │
+│   APIs       │
+└──────────────┘
+```
+
+1. You type a question in the browser
+2. JavaScript detects if it needs calendar or email data
+3. Fetches data from HTTP server (port 8000)
+4. HTTP server queries Google Calendar/Gmail APIs
+5. Data is sent to Ollama (port 11434) with your question
+6. Llama 3.2 generates a natural language response
+7. Answer appears in chat
+
+---
+
+## Available Tools
+
+The HTTP server exposes these endpoints:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/tools` | GET | List available tools |
+| `/call_tool` | POST | Execute a tool |
+
+**Available tools:**
+- `calendar_list_events` - List upcoming events
+- `calendar_create_event` - Create new event
+- `gmail_list_messages` - List recent emails
+- `gmail_read_message` - Read specific email
+- `gmail_send_message` - Send an email
+
+---
 
 ## Security
 
@@ -179,105 +221,168 @@ mcp-google-services/
 - `credentials.json` - Your OAuth credentials
 - `token.pickle` - Your access token
 
-The `.gitignore` file is configured to prevent this, but always double-check before pushing to a repository.
+The `.gitignore` file prevents this automatically.
 
-## How It Works
+**Access Control:**
+- HTTP server runs on `localhost` only (not accessible from internet)
+- Ollama runs locally
+- All data stays on your machine
+- No cloud services involved
 
-MCP servers run **locally** on your machine:
-
-1. Your LLM client (Ollama, Continue.dev, etc.) spawns the Python process
-2. They communicate via stdin/stdout (no network, no ports)
-3. The server authenticates with Google using your credentials
-4. Your LLM can now call tools to interact with Calendar/Gmail
-5. All data stays on your local machine
-
-**No cloud deployment needed!**
+---
 
 ## Troubleshooting
 
-### "Module 'mcp' not found"
-```bash
-# Make sure venv is activated
-source mcp/bin/activate
+### "Failed to fetch" in browser
 
-# Install dependencies
+**Check all 3 servers are running:**
+```bash
+curl http://localhost:8000      # HTTP server
+curl http://localhost:11434     # Ollama
+curl http://localhost:8080      # Web server
+```
+
+All should respond without errors.
+
+### Ollama CORS errors
+
+Make sure you started Ollama with:
+```bash
+OLLAMA_ORIGINS="*" ollama serve
+```
+
+Not just `ollama serve`
+
+### "Model not found"
+
+```bash
+ollama list  # Check installed models
+ollama pull llama3.2:3b  # Pull if missing
+```
+
+### Python errors
+
+```bash
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### "credentials.json not found"
-Make sure you downloaded it from Google Cloud Console and placed it in the project root directory.
+### Google auth errors
 
-### "Permission denied" errors
-```bash
-chmod +x setup.sh
-chmod +x src/server.py
-```
-
-### Authentication issues
-Delete `token.pickle` and run authentication again:
+Delete token and re-authenticate:
 ```bash
 rm token.pickle
-python src/server.py
+python src/server_http.py
 ```
 
-### Can't find full path
-```bash
-# Linux/Mac
-cd /path/to/mcp-google-services
-pwd
+---
 
-# Windows
-cd C:\path\to\mcp-google-services
-cd
-```
+## Performance
 
-### LLM can't connect to MCP server
-- Verify you're using the FULL absolute path to `server.py`
-- Make sure the virtual environment has all dependencies installed
-- Check that `credentials.json` and `token.pickle` exist
-- Try restarting your LLM client
+**Expected response times on CPU:**
+- Calendar queries: 3-5 seconds
+- Email queries: 3-5 seconds
+- Simple questions: 2-3 seconds
 
-## Docker (Optional)
+**With GPU (if available):**
+- All queries: 1-2 seconds
 
-If you prefer to run via Docker:
+---
+
+## Making Ollama Start with CORS Automatically
+
+To avoid typing `OLLAMA_ORIGINS="*"` every time:
 
 ```bash
-# Build image
-docker build -t mcp-google .
+# Add to ~/.bashrc
+echo 'export OLLAMA_ORIGINS="*"' >> ~/.bashrc
+source ~/.bashrc
 
-# Run (mount credentials as volumes)
-docker run -i --rm \
-  -v $(pwd)/credentials.json:/app/credentials.json \
-  -v $(pwd)/token.pickle:/app/token.pickle \
-  mcp-google
+# Now just use:
+ollama serve
 ```
 
-## Contributing
+---
 
-This is an MVP. Suggestions and improvements welcome!
+## Stopping the Servers
 
-Possible enhancements:
-- Support for multiple calendars
-- Email attachments
-- Calendar event updates/deletions
-- Gmail labels and filters
-- Google Drive integration
+Press `Ctrl+C` in each terminal to stop the servers.
+
+Or kill all at once:
+```bash
+pkill -f "python.*server_http"
+sudo pkill ollama
+pkill -f "python.*http.server"
+```
+
+---
+
+## Future Enhancements
+
+Possible improvements:
+- ✨ Add email sending capability to chat
+- ✨ Calendar event creation via chat
+- ✨ Email search functionality
+- ✨ Multiple calendar support
+- ✨ Better conversation memory
+- ✨ Voice input/output
+
+---
+
+## Technical Details
+
+**Stack:**
+- **Backend:** Python 3.11 + FastAPI
+- **LLM:** Llama 3.2 3B via Ollama
+- **APIs:** Google Calendar API, Gmail API
+- **Frontend:** Vanilla JavaScript + HTML/CSS
+- **No frameworks:** Pure web technologies
+
+**Why this approach?**
+- ✅ Simple setup
+- ✅ Everything runs locally
+- ✅ No external dependencies
+- ✅ Easy to modify
+- ✅ Works on modest hardware
+
+---
+
+## Support
+
+**Common issues:**
+1. CORS errors → Restart Ollama with `OLLAMA_ORIGINS="*"`
+2. Slow responses → Normal on CPU, ~3-5 seconds
+3. Can't connect → Check all 3 servers are running
+4. Auth errors → Delete `token.pickle`, re-authenticate
+
+**System Requirements:**
+- 8GB RAM minimum (16GB recommended)
+- Any modern CPU
+- ~10GB disk space (for models)
+- Internet connection (for Google APIs)
+
+---
 
 ## License
 
 MIT
 
-## Support
+---
 
-If you encounter issues:
-1. Check the Troubleshooting section above
-2. Verify all setup steps were completed
-3. Check that your Google Cloud project has the required APIs enabled
-4. Make sure you're added as a test user in the OAuth consent screen
+## Quick Command Reference
 
-## Links
+```bash
+# Start everything (use 3 separate terminals)
 
-- [Model Context Protocol Documentation](https://modelcontextprotocol.io)
-- [Google Calendar API](https://developers.google.com/calendar)
-- [Gmail API](https://developers.google.com/gmail)
-- [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk)
+# Terminal 1:
+cd mcp-google-services && source .venv/bin/activate && python src/server_http.py
+
+# Terminal 2:
+OLLAMA_ORIGINS="*" ollama serve
+
+# Terminal 3:
+cd mcp-google-services && python3 -m http.server 8080
+
+# Then open browser to:
+# http://localhost:8080/chat_interface.html
+```
