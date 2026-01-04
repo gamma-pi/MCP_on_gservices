@@ -5,11 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LLM Chat with Google Services</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             background: #1a1a1a;
@@ -23,10 +19,7 @@
             padding: 1rem;
             border-bottom: 1px solid #404040;
         }
-        .header h1 {
-            font-size: 1.2rem;
-            color: #4a9eff;
-        }
+        .header h1 { font-size: 1.2rem; color: #4a9eff; }
         .chat-container {
             flex: 1;
             overflow-y: auto;
@@ -40,6 +33,7 @@
             padding: 0.75rem 1rem;
             border-radius: 0.5rem;
             line-height: 1.5;
+            white-space: pre-wrap;
         }
         .user-message {
             align-self: flex-end;
@@ -82,10 +76,7 @@
             color: #e0e0e0;
             font-size: 1rem;
         }
-        input:focus {
-            outline: none;
-            border-color: #4a9eff;
-        }
+        input:focus { outline: none; border-color: #4a9eff; }
         button {
             padding: 0.75rem 1.5rem;
             background: #4a9eff;
@@ -96,13 +87,8 @@
             font-size: 1rem;
             font-weight: 500;
         }
-        button:hover {
-            background: #3a8eef;
-        }
-        button:disabled {
-            background: #404040;
-            cursor: not-allowed;
-        }
+        button:hover { background: #3a8eef; }
+        button:disabled { background: #404040; cursor: not-allowed; }
         .loading {
             align-self: flex-start;
             color: #808080;
@@ -131,7 +117,6 @@
         const chatContainer = document.getElementById('chatContainer');
         const userInput = document.getElementById('userInput');
         const sendBtn = document.getElementById('sendBtn');
-        let conversationHistory = [];
 
         function addMessage(content, type) {
             const div = document.createElement('div');
@@ -151,104 +136,74 @@
             return data.result;
         }
 
-        async function callOllama(messages) {
-            try {
-                let response = await fetch('http://localhost:11434/api/generate', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    mode: 'cors',
-                    body: JSON.stringify({
-                        model: 'llama3.2:3b',
-                        prompt: messages[messages.length - 1].content,
-                        stream: false
-                    })
-                });
-                
-                if (!response.ok) {
-                    throw new Error('Ollama request failed');
-                }
-                
-                const data = await response.json();
-                return { message: { content: data.response } };
-            } catch (error) {
-                console.error('Ollama error:', error);
-                throw new Error('Could not connect to Ollama. Make sure it is running with CORS enabled.');
-            }
-        }
-
         async function sendMessage() {
             const message = userInput.value.trim();
             if (!message) return;
 
-            // Disable input
             userInput.disabled = true;
             sendBtn.disabled = true;
             userInput.value = '';
 
-            // Add user message
             addMessage(message, 'user-message');
-            conversationHistory.push({ role: 'user', content: message });
 
-            // Show loading
             const loadingDiv = document.createElement('div');
             loadingDiv.className = 'message loading';
             loadingDiv.textContent = 'Thinking...';
             chatContainer.appendChild(loadingDiv);
 
             try {
-                // Determine if we need to call a tool
-                let toolToCall = null;
-                let toolArgs = {};
+                let toolResult = null;
+                let toolName = null;
 
                 if (message.toLowerCase().includes('calendar') || message.toLowerCase().includes('event')) {
-                    toolToCall = 'calendar_list_events';
-                    toolArgs = { max_results: 10 };
+                    toolName = 'calendar_list_events';
+                    loadingDiv.textContent = '🔧 Fetching calendar...';
+                    addMessage(`Using tool: ${toolName}`, 'tool-call');
+                    toolResult = await callTool(toolName, { max_results: 10 });
                 } else if (message.toLowerCase().includes('email') || message.toLowerCase().includes('mail')) {
-                    toolToCall = 'gmail_list_messages';
-                    toolArgs = { max_results: 10 };
+                    toolName = 'gmail_list_messages';
+                    loadingDiv.textContent = '🔧 Fetching emails...';
+                    addMessage(`Using tool: ${toolName}`, 'tool-call');
+                    toolResult = await callTool(toolName, { max_results: 10 });
                 }
 
-                let contextData = '';
-                if (toolToCall) {
-                    loadingDiv.textContent = `🔧 Fetching data from ${toolToCall}...`;
-                    addMessage(`Using tool: ${toolToCall}`, 'tool-call');
-                    
-                    const toolResult = await callTool(toolToCall, toolArgs);
-                    contextData = `\n\nHere is the data from ${toolToCall}:\n${JSON.stringify(toolResult, null, 2)}`;
-                }
-
-                // Call LLM with context
                 loadingDiv.textContent = 'Getting response...';
-                const llmMessages = [
-                    ...conversationHistory.slice(0, -1),
-                    { 
-                        role: 'user', 
-                        content: message + contextData 
-                    }
-                ];
+                
+                const today = new Date().toISOString().split('T')[0];
+                const systemPrompt = `You are a helpful assistant. Today is ${today}. When given calendar or email data, provide a clear, natural summary. Don't write code. Just answer the question based on the data.`;
+                
+                let prompt = systemPrompt + "\n\nUser: " + message;
+                if (toolResult) {
+                    prompt += "\n\nHere is the relevant data:\n" + JSON.stringify(toolResult, null, 2);
+                }
+                prompt += "\n\nAssistant:";
 
-                const llmResponse = await callOllama(llmMessages);
-                const assistantMessage = llmResponse.message.content;
+                const response = await fetch('http://localhost:11434/api/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model: 'llama3.2:3b',
+                        prompt: prompt,
+                        stream: false
+                    })
+                });
 
-                // Remove loading
+                if (!response.ok) throw new Error('Ollama request failed');
+                
+                const data = await response.json();
                 chatContainer.removeChild(loadingDiv);
-
-                // Add assistant response
-                addMessage(assistantMessage, 'assistant-message');
-                conversationHistory.push({ role: 'assistant', content: assistantMessage });
+                addMessage(data.response, 'assistant-message');
 
             } catch (error) {
                 chatContainer.removeChild(loadingDiv);
                 addMessage(`Error: ${error.message}`, 'error');
             } finally {
-                // Re-enable input
                 userInput.disabled = false;
                 sendBtn.disabled = false;
                 userInput.focus();
             }
         }
 
-        // Welcome message
         addMessage('Hi! Ask me about your calendar or emails. Try: "What\'s on my calendar?" or "Show me my recent emails"', 'assistant-message');
     </script>
 </body>
