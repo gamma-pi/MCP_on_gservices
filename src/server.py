@@ -24,9 +24,14 @@ SCOPES = [
 
 def get_google_creds():
     """Get or create Google API credentials"""
+    # Use absolute paths
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    token_path = os.path.join(os.path.dirname(base_dir), 'token.pickle')
+    creds_path = os.path.join(os.path.dirname(base_dir), 'credentials.json')
+    
     creds = None
-    if os.path.exists('token.pickle'):
-        with open('token.pickle', 'rb') as token:
+    if os.path.exists(token_path):
+        with open(token_path, 'rb') as token:
             creds = pickle.load(token)
 
     if not creds or not creds.valid:
@@ -34,10 +39,10 @@ def get_google_creds():
             creds.refresh(Request())
         else:
             flow = InstalledAppFlow.from_client_secrets_file(
-                'credentials.json', SCOPES)
+                creds_path, SCOPES)
             creds = flow.run_local_server(port=0)
 
-        with open('token.pickle', 'wb') as token:
+        with open(token_path, 'wb') as token:
             pickle.dump(creds, token)
 
     return creds

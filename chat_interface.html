@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Chat with Google Services</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .header {
+            background: #2d2d2d;
+            padding: 1rem;
+            border-bottom: 1px solid #404040;
+        }
+        .header h1 {
+            font-size: 1.2rem;
+            color: #4a9eff;
+        }
+        .chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        .message {
+            max-width: 70%;
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            line-height: 1.5;
+        }
+        .user-message {
+            align-self: flex-end;
+            background: #4a9eff;
+            color: white;
+        }
+        .assistant-message {
+            align-self: flex-start;
+            background: #2d2d2d;
+            border: 1px solid #404040;
+        }
+        .tool-call {
+            align-self: flex-start;
+            background: #1a3a1a;
+            border: 1px solid #2d5a2d;
+            font-size: 0.9rem;
+            color: #90ee90;
+            max-width: 80%;
+        }
+        .error {
+            align-self: center;
+            background: #3a1a1a;
+            border: 1px solid #5a2d2d;
+            color: #ff9090;
+            max-width: 80%;
+        }
+        .input-container {
+            background: #2d2d2d;
+            padding: 1rem;
+            border-top: 1px solid #404040;
+            display: flex;
+            gap: 0.5rem;
+        }
+        input {
+            flex: 1;
+            padding: 0.75rem;
+            border: 1px solid #404040;
+            border-radius: 0.5rem;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            font-size: 1rem;
+        }
+        input:focus {
+            outline: none;
+            border-color: #4a9eff;
+        }
+        button {
+            padding: 0.75rem 1.5rem;
+            background: #4a9eff;
+            color: white;
+            border: none;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 500;
+        }
+        button:hover {
+            background: #3a8eef;
+        }
+        button:disabled {
+            background: #404040;
+            cursor: not-allowed;
+        }
+        .loading {
+            align-self: flex-start;
+            color: #808080;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🤖 LLM Chat with Google Calendar & Gmail</h1>
+    </div>
+    
+    <div class="chat-container" id="chatContainer"></div>
+    
+    <div class="input-container">
+        <input 
+            type="text" 
+            id="userInput" 
+            placeholder="Ask about your calendar or emails..."
+            onkeypress="if(event.key==='Enter') sendMessage()"
+        />
+        <button onclick="sendMessage()" id="sendBtn">Send</button>
+    </div>
+
+    <script>
+        const chatContainer = document.getElementById('chatContainer');
+        const userInput = document.getElementById('userInput');
+        const sendBtn = document.getElementById('sendBtn');
+        let conversationHistory = [];
+
+        function addMessage(content, type) {
+            const div = document.createElement('div');
+            div.className = `message ${type}`;
+            div.textContent = content;
+            chatContainer.appendChild(div);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        async function callTool(toolName, args) {
+            const response = await fetch('http://localhost:8000/call_tool', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: toolName, arguments: args })
+            });
+            const data = await response.json();
+            return data.result;
+        }
+
+        async function callOllama(messages) {
+            try {
+                let response = await fetch('http://localhost:11434/api/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    mode: 'cors',
+                    body: JSON.stringify({
+                        model: 'llama3.2:3b',
+                        prompt: messages[messages.length - 1].content,
+                        stream: false
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Ollama request failed');
+                }
+                
+                const data = await response.json();
+                return { message: { content: data.response } };
+            } catch (error) {
+                console.error('Ollama error:', error);
+                throw new Error('Could not connect to Ollama. Make sure it is running with CORS enabled.');
+            }
+        }
+
+        async function sendMessage() {
+            const message = userInput.value.trim();
+            if (!message) return;
+
+            // Disable input
+            userInput.disabled = true;
+            sendBtn.disabled = true;
+            userInput.value = '';
+
+            // Add user message
+            addMessage(message, 'user-message');
+            conversationHistory.push({ role: 'user', content: message });
+
+            // Show loading
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'message loading';
+            loadingDiv.textContent = 'Thinking...';
+            chatContainer.appendChild(loadingDiv);
+
+            try {
+                // Determine if we need to call a tool
+                let toolToCall = null;
+                let toolArgs = {};
+
+                if (message.toLowerCase().includes('calendar') || message.toLowerCase().includes('event')) {
+                    toolToCall = 'calendar_list_events';
+                    toolArgs = { max_results: 10 };
+                } else if (message.toLowerCase().includes('email') || message.toLowerCase().includes('mail')) {
+                    toolToCall = 'gmail_list_messages';
+                    toolArgs = { max_results: 10 };
+                }
+
+                let contextData = '';
+                if (toolToCall) {
+                    loadingDiv.textContent = `🔧 Fetching data from ${toolToCall}...`;
+                    addMessage(`Using tool: ${toolToCall}`, 'tool-call');
+                    
+                    const toolResult = await callTool(toolToCall, toolArgs);
+                    contextData = `\n\nHere is the data from ${toolToCall}:\n${JSON.stringify(toolResult, null, 2)}`;
+                }
+
+                // Call LLM with context
+                loadingDiv.textContent = 'Getting response...';
+                const llmMessages = [
+                    ...conversationHistory.slice(0, -1),
+                    { 
+                        role: 'user', 
+                        content: message + contextData 
+                    }
+                ];
+
+                const llmResponse = await callOllama(llmMessages);
+                const assistantMessage = llmResponse.message.content;
+
+                // Remove loading
+                chatContainer.removeChild(loadingDiv);
+
+                // Add assistant response
+                addMessage(assistantMessage, 'assistant-message');
+                conversationHistory.push({ role: 'assistant', content: assistantMessage });
+
+            } catch (error) {
+                chatContainer.removeChild(loadingDiv);
+                addMessage(`Error: ${error.message}`, 'error');
+            } finally {
+                // Re-enable input
+                userInput.disabled = false;
+                sendBtn.disabled = false;
+                userInput.focus();
+            }
+        }
+
+        // Welcome message
+        addMessage('Hi! Ask me about your calendar or emails. Try: "What\'s on my calendar?" or "Show me my recent emails"', 'assistant-message');
+    </script>
+</body>
+</html>
